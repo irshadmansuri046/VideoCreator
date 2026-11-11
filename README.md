@@ -101,8 +101,8 @@ Click the badge at the top or open [`demo_inference.ipynb`](demo_inference.ipynb
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/your-username/cartoon-video-generator.git
-cd cartoon-video-generator
+git clone https://github.com/irshadmansuri046/VideoCreator.git
+cd VideoCreator
 
 # 2. Create and activate a virtual environment
 python3 -m venv venv
@@ -111,10 +111,16 @@ source venv/bin/activate
 # 3. Install dependencies
 pip install -r requirements.txt
 
-# 4. Launch the web application
+# 4. (Recommended) Pre-download model weights (~8 GB) with live progress bars
+python3 download_models.py
+
+# 5. Launch the web application
 python3 app.py
 ```
 Open **`http://localhost:7860`** in your browser.
+
+> [!TIP]
+> **Apple Silicon Mac & Low-Memory Machines:** The pipeline automatically detects Apple Silicon MPS (Metal) and activates `torch.float16` with `slice_size=1` attention slicing and VAE slicing. Use the default 8–12 frames and 15 steps for fast clips (~60s generation time).
 
 ---
 

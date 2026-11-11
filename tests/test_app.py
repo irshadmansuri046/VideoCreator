@@ -125,6 +125,29 @@ class TestGradioAppConstruction(unittest.TestCase):
             mock_gr.Video.assert_called_once()
             mock_gr.Button.assert_called_once()
 
+    def test_build_app_mps_adaptive_defaults(self):
+        mock_gr = MagicMock()
+        mock_blocks = MagicMock()
+        mock_gr.Blocks.return_value.__enter__.return_value = mock_blocks
+
+        with patch("pipeline.CartoonVideoGenerator._resolve_device", return_value=MagicMock(type="mps")):
+            with patch.dict("sys.modules", {"gradio": mock_gr}):
+                demo = build_app(device="mps")
+                # Ensure Slider was configured
+                slider_calls = [c for c in mock_gr.Slider.call_args_list]
+                self.assertTrue(len(slider_calls) >= 2)
+
+    def test_build_app_cuda_adaptive_defaults(self):
+        mock_gr = MagicMock()
+        mock_blocks = MagicMock()
+        mock_gr.Blocks.return_value.__enter__.return_value = mock_blocks
+
+        with patch("pipeline.CartoonVideoGenerator._resolve_device", return_value=MagicMock(type="cuda")):
+            with patch.dict("sys.modules", {"gradio": mock_gr}):
+                demo = build_app(device="cuda")
+                slider_calls = [c for c in mock_gr.Slider.call_args_list]
+                self.assertTrue(len(slider_calls) >= 2)
+
 
 if __name__ == "__main__":
     unittest.main()

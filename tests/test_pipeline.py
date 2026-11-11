@@ -144,6 +144,60 @@ class TestGeneratorLifecycle(unittest.TestCase):
                 gen.generate_clip(input_image=MagicMock(), prompt="test")
             self.assertIn("out of memory", str(ctx.exception).lower())
 
+    def test_check_cached_models(self):
+        status = CartoonVideoGenerator.check_cached_models()
+        self.assertIn("motion_adapter", status)
+        self.assertIn("base_model", status)
+        self.assertIn("ip_adapter", status)
+        self.assertIn("all_cached", status)
+
+    @patch.object(CartoonVideoGenerator, "_initialize_pipeline")
+    def test_apply_memory_optimizations(self, mock_init):
+        gen = CartoonVideoGenerator(device="cpu")
+        mock_pipe = MagicMock()
+        gen.pipe = mock_pipe
+        gen._apply_memory_optimizations()
+
+        mock_pipe.enable_vae_slicing.assert_called_once()
+        mock_pipe.enable_vae_tiling.assert_called_once()
+        mock_pipe.enable_attention_slicing.assert_called_with(slice_size=1)
+
+    @patch.object(CartoonVideoGenerator, "_initialize_pipeline")
+    def test_step_callback_invoked(self, mock_init):
+        gen = CartoonVideoGenerator(device="cpu")
+        mock_pipe = MagicMock()
+        mock_output = MagicMock()
+        mock_output.frames = [[MagicMock()]]
+        mock_pipe.return_value = mock_output
+        gen.pipe = mock_pipe
+
+        step_events = []
+        def step_cb(step, total):
+            step_events.append((step, total))
+
+        mock_diffusers = MagicMock()
+        mock_utils = MagicMock()
+        mock_utils.export_to_video.return_value = "out.mp4"
+        mock_diffusers.utils = mock_utils
+
+        with patch.dict("sys.modules", {"diffusers": mock_diffusers, "diffusers.utils": mock_utils}):
+            with patch.object(CartoonVideoGenerator, "preprocess_image", return_value=MagicMock()):
+                gen.generate_clip(
+                    input_image=MagicMock(),
+                    prompt="test",
+                    num_frames=8,
+                    num_inference_steps=10,
+                    step_callback=step_cb,
+                )
+
+        # Verify callback was passed to pipe call arguments
+        call_kwargs = mock_pipe.call_args[1]
+        self.assertIn("callback_on_step_end", call_kwargs)
+        # Simulate diffusers calling callback_on_step_end
+        cb = call_kwargs["callback_on_step_end"]
+        ret = cb(mock_pipe, 0, 999, {"latents": MagicMock()})
+        self.assertEqual(step_events, [(0, 10)])
+
 
 if __name__ == "__main__":
     unittest.main()

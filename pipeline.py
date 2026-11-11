@@ -56,6 +56,7 @@ class CartoonVideoGenerator:
         device: str = "auto",
         low_vram: bool = False,
         enable_cpu_offload: bool = True,
+        status_callback: Optional[Any] = None,
     ) -> None:
         self.base_model_id = base_model_id
         self.motion_adapter_id = motion_adapter_id
@@ -67,9 +68,39 @@ class CartoonVideoGenerator:
         self.low_vram = low_vram
         self.enable_cpu_offload = enable_cpu_offload
         self.device = self._resolve_device(device)
+        self.status_callback = status_callback
         self.pipe = None
 
         self._initialize_pipeline()
+
+    @staticmethod
+    def check_cached_models() -> Dict[str, Any]:
+        """
+        Checks whether required foundation models are already downloaded
+        in the local Hugging Face cache.
+        """
+        try:
+            from huggingface_hub import try_to_load_from_cache
+            status = {
+                "motion_adapter": try_to_load_from_cache("guoyww/animatediff-motion-adapter-v1-5-2", "config.json") is not None,
+                "base_model": (
+                    try_to_load_from_cache("runwayml/stable-diffusion-v1-5", "unet/diffusion_pytorch_model.safetensors") is not None
+                    or try_to_load_from_cache("runwayml/stable-diffusion-v1-5", "unet/diffusion_pytorch_model.bin") is not None
+                ),
+                "ip_adapter": try_to_load_from_cache("h94/IP-Adapter", "models/ip-adapter_sd15.bin") is not None,
+            }
+            status["all_cached"] = all(status.values())
+            return status
+        except Exception:
+            return {"motion_adapter": False, "base_model": False, "ip_adapter": False, "all_cached": False}
+
+    def _notify_status(self, progress_frac: float, message: str) -> None:
+        """Helper to invoke status callback if registered."""
+        if self.status_callback is not None:
+            try:
+                self.status_callback(progress_frac, message)
+            except Exception:
+                pass
 
     @staticmethod
     def _resolve_device(requested_device: str) -> object:
@@ -102,8 +133,11 @@ class CartoonVideoGenerator:
             logger.error("Diffusers and PyTorch are required: pip install diffusers torch")
             raise e
 
-        logger.info(f"Loading AnimateDiff motion adapter: '{self.motion_adapter_id}'...")
-        torch_dtype = torch.float16 if (self.device.type == "cuda" or self.device == "cuda") else torch.float32
+        device_type = getattr(self.device, "type", str(self.device)).lower()
+        torch_dtype = torch.float16 if device_type in ("cuda", "mps") else torch.float32
+
+        self._notify_status(0.05, f"Loading AnimateDiff motion adapter: '{self.motion_adapter_id}'...")
+        logger.info(f"Loading AnimateDiff motion adapter: '{self.motion_adapter_id}' (device: {device_type}, dtype: {torch_dtype})...")
 
         try:
             motion_adapter = MotionAdapter.from_pretrained(
@@ -111,6 +145,7 @@ class CartoonVideoGenerator:
                 torch_dtype=torch_dtype,
             )
 
+            self._notify_status(0.15, f"Loading Stable Diffusion base pipeline: '{self.base_model_id}'...")
             logger.info(f"Initializing AnimateDiff pipeline with base model: '{self.base_model_id}'...")
             self.pipe = AnimateDiffPipeline.from_pretrained(
                 self.base_model_id,
@@ -129,6 +164,7 @@ class CartoonVideoGenerator:
             )
 
             # Load IP-Adapter for strong image character conditioning
+            self._notify_status(0.25, f"Loading IP-Adapter weights from '{self.ip_adapter_repo}'...")
             logger.info(f"Loading IP-Adapter weights from '{self.ip_adapter_repo}'...")
             try:
                 self.pipe.load_ip_adapter(
@@ -151,9 +187,11 @@ class CartoonVideoGenerator:
 
             # Load custom cartoon style LoRA if provided
             if self.lora_path is not None:
+                self._notify_status(0.30, f"Loading custom cartoon LoRA from '{self.lora_path}'...")
                 self._load_lora_weights()
 
             # Apply memory optimizations for 8GB–16GB VRAM
+            self._notify_status(0.35, "Configuring memory optimizations (FP16, attention slicing, VAE slicing)...")
             self._apply_memory_optimizations()
 
             logger.info("CartoonVideoGenerator pipeline initialized successfully.")
@@ -192,8 +230,11 @@ class CartoonVideoGenerator:
             logger.warning(f"Error loading cartoon LoRA weights: {e}. Continuing with base pipeline.")
 
     def _apply_memory_optimizations(self) -> None:
-        """Applies VAE slicing, tiling, and CPU offloading to prevent OOM on 8GB–16GB GPUs."""
-        import torch
+        """Applies VAE slicing, tiling, attention slicing, and CPU offloading to prevent OOM."""
+        try:
+            import torch
+        except ImportError:
+            torch = None
 
         # VAE decoding optimization: slice and tile latents into sub-blocks
         if hasattr(self.pipe, "enable_vae_slicing"):
@@ -204,6 +245,11 @@ class CartoonVideoGenerator:
             self.pipe.enable_vae_tiling()
             logger.debug("VAE tiling enabled.")
 
+        # Attention Slicing: drastically cuts activation RAM during temporal/spatial attention
+        if hasattr(self.pipe, "enable_attention_slicing"):
+            self.pipe.enable_attention_slicing(slice_size=1)
+            logger.info("Attention slicing enabled (slice_size=1) for reduced memory footprint.")
+
         # PyTorch 2.x SDPA or xFormers attention
         try:
             if hasattr(self.pipe, "enable_xformers_memory_efficient_attention"):
@@ -213,8 +259,8 @@ class CartoonVideoGenerator:
             logger.debug("Using native PyTorch 2.x Scaled Dot Product Attention (SDPA).")
 
         # Device offloading logic
-        is_cuda = (self.device.type == "cuda" if hasattr(self.device, "type") else self.device == "cuda")
-        if is_cuda and torch.cuda.is_available():
+        device_type = getattr(self.device, "type", str(self.device)).lower()
+        if device_type == "cuda" and torch is not None and torch.cuda.is_available():
             if self.low_vram:
                 logger.info("Low VRAM mode: Enabling Sequential CPU Offloading (< 8 GB VRAM mode)...")
                 self.pipe.enable_sequential_cpu_offload()
@@ -223,6 +269,11 @@ class CartoonVideoGenerator:
                 self.pipe.enable_model_cpu_offload()
             else:
                 self.pipe.to(self.device)
+        elif device_type == "mps":
+            logger.info("Apple Silicon MPS mode: Placing model pipeline in MPS memory...")
+            if torch is not None and hasattr(torch, "mps") and hasattr(torch.mps, "empty_cache"):
+                torch.mps.empty_cache()
+            self.pipe.to(self.device)
         else:
             self.pipe.to(self.device)
 
@@ -305,6 +356,7 @@ class CartoonVideoGenerator:
         guidance_scale: float = 7.5,
         seed: Optional[int] = None,
         output_path: Optional[Union[str, Path]] = None,
+        step_callback: Optional[Any] = None,
     ) -> Dict[str, Any]:
         """
         Generates an animated cartoon video clip conditioned on input_image and text prompt.
@@ -335,37 +387,58 @@ class CartoonVideoGenerator:
         # 3. Configure random seed generator
         generator = None
         if seed is not None and has_torch:
-            gen_device = "cpu" if (getattr(self.device, "type", str(self.device)) == "cpu") else "cuda"
+            device_type = getattr(self.device, "type", str(self.device)).lower()
+            gen_device = "mps" if device_type == "mps" else ("cuda" if device_type == "cuda" else "cpu")
             try:
                 generator = torch.Generator(device=gen_device).manual_seed(int(seed))
             except Exception:
-                generator = torch.Generator().manual_seed(int(seed))
+                generator = torch.Generator(device="cpu").manual_seed(int(seed))
 
         logger.info(f"Generating {num_frames} frames at {fps} FPS (Steps: {num_inference_steps}, CFG: {guidance_scale})...")
         logger.info(f"Motion Prompt: \"{prompt}\"")
 
-        # 4. Run Diffusion Inference with OOM Guard
+        # 4. Prepare pipeline call arguments
+        pipe_kwargs: Dict[str, Any] = {
+            "prompt": prompt,
+            "negative_prompt": negative_prompt,
+            "ip_adapter_image": processed_image,
+            "num_frames": num_frames,
+            "num_inference_steps": num_inference_steps,
+            "guidance_scale": guidance_scale,
+        }
+        if generator is not None:
+            pipe_kwargs["generator"] = generator
+
+        if step_callback is not None:
+            def _step_end_callback(pipe_obj, step_idx, timestep, callback_kwargs):
+                try:
+                    step_callback(step_idx, num_inference_steps)
+                except Exception:
+                    pass
+                return callback_kwargs
+
+            pipe_kwargs["callback_on_step_end"] = _step_end_callback
+
+        # 5. Run Diffusion Inference with OOM Guard
         try:
-            if has_torch and hasattr(torch, "inference_mode"):
-                with torch.inference_mode():
-                    output = self.pipe(
-                        prompt=prompt,
-                        negative_prompt=negative_prompt,
-                        ip_adapter_image=processed_image,
-                        num_frames=num_frames,
-                        num_inference_steps=num_inference_steps,
-                        guidance_scale=guidance_scale,
-                        generator=generator,
-                    )
-            else:
-                output = self.pipe(
-                    prompt=prompt,
-                    negative_prompt=negative_prompt,
-                    ip_adapter_image=processed_image,
-                    num_frames=num_frames,
-                    num_inference_steps=num_inference_steps,
-                    guidance_scale=guidance_scale,
-                )
+            try:
+                if has_torch and hasattr(torch, "inference_mode"):
+                    with torch.inference_mode():
+                        output = self.pipe(**pipe_kwargs)
+                else:
+                    output = self.pipe(**pipe_kwargs)
+            except TypeError as te:
+                # Fallback if mock or older diffusers pipeline doesn't accept callback_on_step_end
+                if "callback_on_step_end" in str(te):
+                    pipe_kwargs.pop("callback_on_step_end", None)
+                    if has_torch and hasattr(torch, "inference_mode"):
+                        with torch.inference_mode():
+                            output = self.pipe(**pipe_kwargs)
+                    else:
+                        output = self.pipe(**pipe_kwargs)
+                else:
+                    raise te
+
             frames = output.frames[0]  # List of PIL Images
 
         except Exception as err:
@@ -374,16 +447,19 @@ class CartoonVideoGenerator:
             is_oom = "out of memory" in err_msg or (oom_type is not None and isinstance(err, oom_type))
             if is_oom:
                 logger.error(
-                    "CUDA Out-Of-Memory (OOM) error detected during video generation!\n"
+                    "Out-Of-Memory (OOM) error detected during video generation!\n"
                     "Actionable recovery steps:\n"
-                    "  1. Reduce --num_frames (e.g. from 24 to 16 or 12).\n"
+                    "  1. Reduce --num_frames (e.g. from 24 to 12 or 8).\n"
                     "  2. Initialize CartoonVideoGenerator with low_vram=True (Sequential CPU Offload).\n"
-                    "  3. Reduce --num_inference_steps (e.g. to 20 steps).\n"
-                    "  4. Ensure no other GPU processes are occupying VRAM."
+                    "  3. Reduce --num_inference_steps (e.g. to 15 steps).\n"
+                    "  4. Ensure no other GPU processes are occupying VRAM / unified memory."
                 )
                 gc.collect()
-                if has_torch and hasattr(torch, "cuda") and torch.cuda.is_available():
-                    torch.cuda.empty_cache()
+                if has_torch:
+                    if hasattr(torch, "cuda") and torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                    if hasattr(torch, "mps") and hasattr(torch.mps, "empty_cache"):
+                        torch.mps.empty_cache()
             raise err
 
         # 5. Export to H.264 MP4 Video

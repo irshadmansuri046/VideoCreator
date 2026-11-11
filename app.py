@@ -49,6 +49,7 @@ def get_generator(
     lora_scale: float = 0.85,
     device: str = "auto",
     low_vram: bool = False,
+    status_callback: Optional[Any] = None,
 ) -> object:
     """
     Returns the cached CartoonVideoGenerator singleton, initializing it lazily
@@ -67,6 +68,7 @@ def get_generator(
             device=device,
             low_vram=low_vram,
             enable_cpu_offload=True,
+            status_callback=status_callback,
         )
     return _GENERATOR_INSTANCE
 
@@ -108,6 +110,26 @@ def build_app(
         with open(css_path, "r", encoding="utf-8") as f:
             custom_css = f.read()
 
+    # Hardware detection & adaptive defaults
+    from pipeline import CartoonVideoGenerator
+    resolved_dev = CartoonVideoGenerator._resolve_device(device)
+    dev_type = getattr(resolved_dev, "type", str(resolved_dev)).lower()
+
+    if dev_type == "cuda":
+        system_badge = "🚀 Hardware: NVIDIA CUDA GPU (FP16 High Performance)"
+        default_frames = 16
+        default_steps = 25
+    elif dev_type == "mps":
+        system_badge = "🍎 Hardware: Apple Silicon (Metal MPS) | FP16 Memory Optimized (Sliced Attention)"
+        default_frames = 12
+        default_steps = 15
+    else:
+        system_badge = "⚙️ Hardware: CPU Compute Mode | Sliced Attention Active"
+        default_frames = 8
+        default_steps = 12
+
+    cache_status = CartoonVideoGenerator.check_cached_models()
+
     # Hugging Face ZeroGPU compatibility decorator
     try:
         import spaces
@@ -144,7 +166,10 @@ def build_app(
         actual_seed = random.randint(0, 2147483647) if randomize_seed else int(seed)
 
         start_time = time.time()
-        progress(0.1, desc="Initializing generator and preprocessing image...")
+        progress(0.05, desc="[1/5] Checking model weights & preparing pipeline...")
+
+        def _status_cb(frac: float, msg: str):
+            progress(frac, desc=f"[1/5] {msg}")
 
         try:
             generator = get_generator(
@@ -152,14 +177,20 @@ def build_app(
                 lora_scale=lora_scale,
                 device=device,
                 low_vram=low_vram,
+                status_callback=_status_cb,
             )
 
-            progress(0.3, desc=f"Synthesizing {num_frames} cartoon frames with AnimateDiff & IP-Adapter...")
+            progress(0.20, desc="[2/5] Preprocessing character image (512x512 letterbox)...")
             output_dir = Path(tempfile.gettempdir()) / "cartoon_video_app"
             output_dir.mkdir(parents=True, exist_ok=True)
 
             timestamp = int(time.time() * 1000)
             video_filename = output_dir / f"cartoon_anim_{timestamp}.mp4"
+
+            # Step-by-step progress callback during denoising
+            def _step_cb(step_idx: int, total_steps: int):
+                pct = 0.25 + 0.60 * ((step_idx + 1) / max(1, total_steps))
+                progress(pct, desc=f"[3/5] Denoising frame latents (Step {step_idx + 1}/{total_steps})...")
 
             # Execute generation
             result = generator.generate_clip(
@@ -173,11 +204,13 @@ def build_app(
                 guidance_scale=float(guidance_scale),
                 seed=actual_seed,
                 output_path=video_filename,
+                step_callback=_step_cb,
             )
 
-            progress(0.85, desc="Encoding output formats...")
+            progress(0.88, desc="[4/5] Decoding video frames via VAE slicing...")
             gif_path = None
             if export_gif and result.get("frames"):
+                progress(0.94, desc="[5/5] Encoding animated GIF preview...")
                 gif_filename = output_dir / f"cartoon_anim_{timestamp}.gif"
                 gif_path = export_animated_gif(result["frames"], gif_filename, fps=int(fps))
 
@@ -191,18 +224,19 @@ def build_app(
 - **Video Specs:** `{result['num_frames']} frames` @ `{result['fps']} FPS` (~`{result['num_frames']/result['fps']:.1f}s` duration)
 - **Effective Seed:** `{actual_seed}`
 - **IP-Adapter Weight:** `{ip_adapter_scale:.2f}` | **CFG Scale:** `{guidance_scale:.1f}`
+- **Compute Engine:** `{dev_type.upper()}`
             """.strip()
 
             return str(video_filename), gif_path, metadata_md
 
         except Exception as e:
             err_msg = str(e).lower()
-            if "out of memory" in err_msg or "cuda" in err_msg:
+            if "out of memory" in err_msg or "cuda" in err_msg or "mps" in err_msg:
                 warning_msg = (
-                    "⚠️ GPU Memory Limit Reached (CUDA OOM)!\n\n"
+                    "⚠️ Memory Limit Reached (OOM)!\n\n"
                     "Suggestions to recover:\n"
-                    "1. Lower **Number of Frames** to 16.\n"
-                    "2. Lower **Inference Steps** to 20.\n"
+                    "1. Lower **Number of Frames** (e.g. 8 or 12 frames).\n"
+                    "2. Lower **Inference Steps** to 12 or 15.\n"
                     "3. Relaunch server with `--low_vram` flag for Sequential CPU Offloading."
                 )
                 logger.error(warning_msg)
@@ -220,16 +254,23 @@ def build_app(
 
     with gr.Blocks(theme=theme, css=custom_css, title="CartoonVideoAI - Image to Animated Video") as demo:
         # Header Section
-        gr.HTML("""
+        gr.HTML(f"""
         <div class="app-header">
             <h1>🎬 Image-to-Cartoon-Video AI Studio</h1>
             <p>
                 Transform any character portrait into an animated cartoon video clip with consistent motion, 
                 facial preservation, and fluid anime cel-shading.
-                <span class="badge-tag">AnimateDiff v2 + IP-Adapter + SD 1.5 LoRA</span>
+                <span class="badge-tag">{system_badge}</span>
             </p>
         </div>
         """)
+
+        if not cache_status["all_cached"]:
+            gr.Markdown(
+                "> 💡 **First-Time Setup Notice**: Foundation model weights (~8 GB) are not yet fully cached locally. "
+                "On your first generation, weights will download automatically and be stored in `~/.cache/huggingface/`. "
+                "You can also run `python download_models.py` in your terminal to view download progress with live speeds."
+            )
 
         with gr.Row():
             # Left Column: Inputs & Model Controls
@@ -269,12 +310,12 @@ def build_app(
 
                     with gr.Row():
                         num_frames = gr.Slider(
-                            minimum=16,
+                            minimum=8,
                             maximum=32,
-                            value=16,
-                            step=8,
+                            value=default_frames,
+                            step=4,
                             label="Frame Count",
-                            info="16 frames (~2 sec) or 24 frames (~3 sec).",
+                            info=f"Default: {default_frames} frames. 8 frames (~1s preview), 12 frames (~1.5s), 16 frames (~2s).",
                         )
                         fps = gr.Slider(
                             minimum=6,
@@ -287,12 +328,12 @@ def build_app(
 
                     with gr.Row():
                         num_inference_steps = gr.Slider(
-                            minimum=15,
+                            minimum=10,
                             maximum=40,
-                            value=25,
+                            value=default_steps,
                             step=1,
                             label="Inference Steps",
-                            info="Higher steps increase detail at cost of generation time.",
+                            info=f"Default: {default_steps} steps. Lower = faster, higher = finer details.",
                         )
                         guidance_scale = gr.Slider(
                             minimum=1.0,
