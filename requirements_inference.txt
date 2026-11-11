@@ -1,0 +1,22 @@
+# Module 3: Image-to-Cartoon-Video Inference Engine Dependencies
+# Compatible with 8GB-16GB VRAM GPUs (e.g. Google Colab / Kaggle T4)
+
+# Core PyTorch
+torch>=2.0.0
+torchvision>=0.15.0
+
+# Hugging Face Generative AI Stack
+diffusers>=0.27.0
+transformers>=4.38.0
+peft>=0.9.0
+accelerate>=0.28.0
+safetensors>=0.4.2
+
+# Video Encoding & Image Processing
+imageio[ffmpeg]>=2.30.0
+imageio-ffmpeg>=0.4.8
+opencv-python-headless>=4.8.0
+Pillow>=10.0.0
+numpy>=1.24.0
+scipy>=1.10.0
+tqdm>=4.66.0

@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cartoon Video Generator - AI Studio</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --card-bg: #131b2e;
+            --card-border: rgba(139, 92, 246, 0.2);
+            --primary: #8b5cf6;
+            --primary-gradient: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #d946ef 100%);
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 2.5rem 1.5rem;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 960px;
+            width: 100%;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 2.5rem;
+            padding: 2.5rem 1.5rem;
+            background: linear-gradient(180deg, rgba(99, 102, 241, 0.12) 0%, rgba(139, 92, 246, 0.03) 100%);
+            border: 1px solid var(--card-border);
+            border-radius: 20px;
+            backdrop-filter: blur(12px);
+        }
+
+        h1 {
+            font-size: 2.6rem;
+            font-weight: 800;
+            background: var(--primary-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.8rem;
+            letter-spacing: -0.02em;
+        }
+
+        p.subtitle {
+            font-size: 1.15rem;
+            color: var(--text-muted);
+            max-width: 720px;
+            margin: 0 auto 1.5rem auto;
+        }
+
+        .badges {
+            display: flex;
+            gap: 0.6rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .badge {
+            background: rgba(139, 92, 246, 0.15);
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            color: #c4b5fd;
+            font-size: 0.85rem;
+            font-weight: 600;
+            padding: 0.35rem 0.85rem;
+            border-radius: 9999px;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2.5rem;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            padding: 1.75rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 12px 30px rgba(139, 92, 246, 0.15);
+            border-color: rgba(139, 92, 246, 0.4);
+        }
+
+        .card h3 {
+            font-size: 1.25rem;
+            font-weight: 700;
+            margin-bottom: 0.6rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .card p {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            margin-bottom: 1.25rem;
+            flex-grow: 1;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            background: var(--primary-gradient);
+            color: white;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 0.95rem;
+            padding: 0.75rem 1.25rem;
+            border-radius: 10px;
+            transition: opacity 0.2s;
+        }
+
+        .btn:hover {
+            opacity: 0.92;
+        }
+
+        .btn-outline {
+            background: transparent;
+            border: 1px solid rgba(139, 92, 246, 0.5);
+            color: #ddd6fe;
+        }
+
+        .btn-outline:hover {
+            background: rgba(139, 92, 246, 0.1);
+        }
+
+        .architecture {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            padding: 2rem;
+            margin-bottom: 2.5rem;
+        }
+
+        .architecture h2 {
+            font-size: 1.4rem;
+            margin-bottom: 1rem;
+            color: #c4b5fd;
+        }
+
+        .tech-flow {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            margin-top: 1.2rem;
+        }
+
+        .tech-step {
+            flex: 1 1 200px;
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
+            padding: 1rem;
+        }
+
+        .tech-step h4 {
+            color: #a78bfa;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.3rem;
+        }
+
+        .tech-step p {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        code {
+            font-family: 'JetBrains Mono', monospace;
+            background: rgba(139, 92, 246, 0.15);
+            padding: 0.15rem 0.4rem;
+            border-radius: 4px;
+            font-size: 0.85em;
+            color: #c4b5fd;
+        }
+
+        footer {
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            margin-top: 2rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.06);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎬 Cartoon Video Generator</h1>
+            <p class="subtitle">
+                Transform any character portrait into a smooth, animated cartoon video clip with AnimateDiff v2, IP-Adapter identity preservation, and Stable Diffusion 1.5 LoRA styling.
+            </p>
+            <div class="badges">
+                <span class="badge">🚀 AnimateDiff v2</span>
+                <span class="badge">🧬 IP-Adapter SD 1.5</span>
+                <span class="badge">🎨 Custom Style LoRA</span>
+                <span class="badge">⚡ ZeroGPU / T4 Ready</span>
+                <span class="badge">📄 Apache 2.0</span>
+            </div>
+        </header>
+
+        <div class="grid">
+            <div class="card">
+                <div>
+                    <h3>🚀 1-Click Interactive Demo</h3>
+                    <p>Run the full Gradio Web Studio with free GPU acceleration on Google Colab. Synthesize animated cartoon clips in 15 seconds.</p>
+                </div>
+                <a class="btn" href="https://colab.research.google.com/github/samdon100/cartoon-video-generator/blob/main/demo_inference.ipynb" target="_blank">
+                    Open in Google Colab ↗
+                </a>
+            </div>
+
+            <div class="card">
+                <div>
+                    <h3>🎓 Train Your Own LoRA</h3>
+                    <p>Curate custom animation datasets and train a parameter-efficient SD 1.5 LoRA on free cloud GPUs with 8-bit AdamW.</p>
+                </div>
+                <a class="btn btn-outline" href="https://colab.research.google.com/github/samdon100/cartoon-video-generator/blob/main/train_lora_colab.ipynb" target="_blank">
+                    Open Training Notebook ↗
+                </a>
+            </div>
+
+            <div class="card">
+                <div>
+                    <h3>💻 Local CLI & API</h3>
+                    <p>Clone the repository and run locally on your machine with <code>python3 app.py</code> or terminal batch scripting with <code>cli_test.py</code>.</p>
+                </div>
+                <a class="btn btn-outline" href="https://huggingface.co/spaces/samdon100/cartoon-video-generator/tree/main" target="_blank">
+                    Browse Space Files ↗
+                </a>
+            </div>
+        </div>
+
+        <div class="architecture">
+            <h2>Two-Stage Disentangled Pipeline</h2>
+            <p style="color: var(--text-muted); font-size: 0.95rem;">
+                The architecture cleanly separates character facial identity from artistic style and temporal motion:
+            </p>
+            <div class="tech-flow">
+                <div class="tech-step">
+                    <h4>1. Identity</h4>
+                    <p><strong>IP-Adapter</strong> decouples cross-attention to preserve facial fidelity and attire directly from the input portrait.</p>
+                </div>
+                <div class="tech-step">
+                    <h4>2. Style</h4>
+                    <p><strong>Custom LoRA</strong> layers on U-Net attention blocks enforce crisp 2D anime/cartoon cel-shading.</p>
+                </div>
+                <div class="tech-step">
+                    <h4>3. Motion</h4>
+                    <p><strong>AnimateDiff v2</strong> models smooth temporal transitions across 16–24 frames without flickering.</p>
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            <p>Open-source project licensed under the <strong>Apache License 2.0</strong>. Powered by Hugging Face Diffusers, PEFT, and Gradio.</p>
+        </footer>
+    </div>
+</body>
+</html>

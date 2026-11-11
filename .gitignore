@@ -1,0 +1,29 @@
+# Virtual Environment
+venv/
+env/
+.venv/
+
+# Python cache & bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# Output media & artifacts
+*.mp4
+*.gif
+*.png
+!assets/examples/*.png
+output/
+outputs/
+validation_samples/
+checkpoint-*/
+cartoon_lora_sd15_output/
+
+# macOS system files
+.DS_Store
+
+# Temporary files
+*.tmp
+*~

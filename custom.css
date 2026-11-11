@@ -1,0 +1,100 @@
+/* 
+ * Custom Styling for Image-to-Cartoon-Video Gradio Web App (Module 4)
+ * Modern, responsive, soft dark/light mode compatible.
+ */
+
+:root {
+    --primary-gradient: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #d946ef 100%);
+    --primary-hover: linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #c026d3 100%);
+    --card-bg-light: #ffffff;
+    --card-bg-dark: #1e1e2d;
+    --border-radius-base: 14px;
+}
+
+/* App Header styling */
+.app-header {
+    text-align: center;
+    margin-bottom: 1.5rem;
+    padding: 1.5rem 1rem;
+    background: linear-gradient(180deg, rgba(99, 102, 241, 0.08) 0%, rgba(139, 92, 246, 0.02) 100%);
+    border-radius: var(--border-radius-base);
+    border: 1px solid rgba(139, 92, 246, 0.15);
+}
+
+.app-header h1 {
+    font-size: 2.2rem;
+    font-weight: 800;
+    background: var(--primary-gradient);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 0.5rem;
+}
+
+.app-header p {
+    font-size: 1.05rem;
+    color: #64748b;
+    max-width: 680px;
+    margin: 0 auto;
+}
+
+/* Primary Generate Button */
+.generate-btn {
+    background: var(--primary-gradient) !important;
+    color: #ffffff !important;
+    font-weight: 700 !important;
+    font-size: 1.1rem !important;
+    border: none !important;
+    border-radius: var(--border-radius-base) !important;
+    padding: 0.85rem 1.5rem !important;
+    box-shadow: 0 4px 14px rgba(139, 92, 246, 0.35) !important;
+    transition: all 0.25s ease-in-out !important;
+    cursor: pointer !important;
+}
+
+.generate-btn:hover {
+    background: var(--primary-hover) !important;
+    box-shadow: 0 6px 20px rgba(139, 92, 246, 0.55) !important;
+    transform: translateY(-1px) !important;
+}
+
+.generate-btn:active {
+    transform: translateY(1px) !important;
+}
+
+/* Video Player Container */
+.video-preview {
+    border-radius: var(--border-radius-base) !important;
+    overflow: hidden !important;
+    border: 1px solid rgba(139, 92, 246, 0.2) !important;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06) !important;
+}
+
+/* Metadata box */
+.metadata-card {
+    padding: 1rem;
+    background: rgba(99, 102, 241, 0.04);
+    border-radius: 10px;
+    border-left: 4px solid #8b5cf6;
+    font-size: 0.95rem;
+    margin-top: 1rem;
+}
+
+/* Accordion headers */
+.gradio-accordion {
+    border: 1px solid rgba(148, 163, 184, 0.25) !important;
+    border-radius: 12px !important;
+    margin-top: 0.75rem !important;
+}
+
+/* Badge highlights */
+.badge-tag {
+    display: inline-block;
+    padding: 0.2rem 0.6rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border-radius: 9999px;
+    background: rgba(99, 102, 241, 0.15);
+    color: #6366f1;
+    margin-left: 0.5rem;
+    vertical-align: middle;
+}
